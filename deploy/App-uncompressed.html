@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>mvp-backlog-burndown</title>
+
+    <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
+    <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.10.3/moment.min.js"></script>
+    <script type="text/javascript" src="https://rally1.rallydev.com/apps/2.0rc3/lib/analytics/analytics-all.js"></script>
+
+    <script type="text/javascript">
+        Rally.onReady(function () {
+                Ext.define("Rally.SolutionsArchitect.TimeSeriesCalculator", {
+    extend: "Rally.data.lookback.calculator.TimeSeriesCalculator",
+
+    config: {
+        /*
+         * Required
+         */
+        group_by_field: null,
+        /*
+         * Name of field that holds the value to add up
+         * (Required if type is "sum")
+         */
+        value_field: null, 
+        /*
+         * allowed_values (Required): array of available values in field to group by
+         */
+         allowed_values: null,
+         /*
+          * allowed_oids is an array of ObjectIDs that are allowed to be reported on
+          * This lets you restrict to a set of items that currently met a WSAPI filter 
+          * (e.g., if I want to apply a tag to stories and then see what those stories' histories
+          * have been. If I put tag in the lookback query, then that tag has to have been assigned
+          * yesterday to see what happened to the items yesterday)
+          * 
+          * leave as null to allow everything
+          */
+         allowed_oids: null,
+         granularity: 'day',
+         /*
+          * value_type: 'sum' | 'count' whether to count on given field or to count the records
+          */
+         value_type: 'sum',
+         endDate: null,
+         startDate: null,
+         workDays: 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday'.split(), //# They work on Sundays
+         mvpExpression : null,
+         lastState : null
+    },
+    constructor: function (config) {
+        this.callParent(arguments);
+        this._prepareDates();
+    },
+    /*
+     * The goal is to have two dates, in order, that are ISO strings
+     */
+    _prepareDates: function() {
+        if ( this.startDate === "" ) { this.startDate = null; }
+        if ( this.endDate === "" )   { this.endDate   = null; }
+        
+        if ( this.startDate && typeof(this.startDate) === 'object' ) {
+            this.startDate = Rally.util.DateTime.toIsoString(this.startDate);
+        }
+        if ( this.endDate && typeof(this.endDate) === 'object' ) {
+            this.endDate = Rally.util.DateTime.toIsoString(this.endDate);
+        }
+        
+        if ( this.startDate && ! /-/.test(this.startDate)  ){
+            throw "Failed to create Rally.TechnicalServices.CFDCalculator: startDate must be a javascript date or ISO date string";
+        }
+
+        if ( this.endDate && ! /-/.test(this.endDate)  ){
+            throw "Failed to create Rally.TechnicalServices.CFDCalculator: endDate must be a javascript date or ISO date string";
+        }
+    
+        // switch dates
+        if ( this.startDate && this.endDate ) {
+            if ( this.startDate > this.endDate ) {
+                var holder = this.startDate;
+                this.startDate = this.endDate;
+                this.endDate = holder;
+            }
+        }
+        
+        if ( this.startDate ) { this.startDate = this.startDate.replace(/T.*$/,""); }
+        if ( this.endDate ) { this.endDate = this.endDate.replace(/T.*$/,""); }
+    },
+
+    getDerivedFieldsOnInput : function() {
+
+      var that = this;
+
+      var accepted = function(state) {
+        return state === "Accepted" || state === that.lastState;
+      }
+
+      return [
+        { 
+          "as": "MVP",
+          "f": function(snapshot) { 
+            // console.log("mvp:",snapshot,that.mvpExpression,eval(that.mvpExpression));
+            return ( !accepted(snapshot.ScheduleState) && eval(that.mvpExpression) === true /*snapshot.Priority === "MVP"*/ ) ? 
+              snapshot.PlanEstimate : 0 ;
+          }
+        },
+        { 
+          "as": "Non-MVP",
+          "f": function(snapshot) { 
+            return ( !accepted(snapshot.ScheduleState) && eval(that.mvpExpression) === false /*snapshot.Priority !== "MVP"*/ ) ? 
+              snapshot.PlanEstimate : 0 ;
+          }
+        },
+        { 
+          "as": "Completed",
+          "f": function(snapshot) { 
+            // console.log("snapshot:",snapshot,snapshot.ScheduleState)
+            return ( accepted(snapshot.ScheduleState) ) ? 
+              snapshot.PlanEstimate * -1 : 0 ;
+          }
+        }
+      ];
+    },
+    /*
+     * How to measure
+     * 
+     * { 
+     *      field       : the field that has the value to add up on each day
+     *      as          : the name to display in the legend
+     *      display     : "line" | "column" | "area"
+     *      f           : function to use (e.g., "sum", "filteredSum"
+     *      filterField : (when f=filteredSum) field with values used to group by (stacks on column)
+     *      filterValues: (when f=filteredSum) used to decide which values of filterField to show
+     */
+    getMetrics: function () {
+
+      return [
+        {
+          as : 'Completed',
+          field : 'Completed',
+          f : 'sum',
+          display : 'column'
+        },
+        {
+          as : 'MVP',
+          field : 'MVP',
+          f : 'sum',
+          display : 'column'
+        },
+        {
+          as : 'Non-MVP',
+          field : 'Non-MVP',
+          f : 'sum',
+          display : 'column'
+        }
+      ];
+    },
+
+    // override runCalculation to change false to "false" because highcharts doesn't like it
+    runCalculation: function (snapshots) {
+
+      // console.log("snapshots",snapshots);
+      // console.log(_.uniq(_.map(snapshots,function(s){return s.FormattedID})));
+        
+        var calculatorConfig = this._prepareCalculatorConfig(),
+            seriesConfig = this._buildSeriesConfig(calculatorConfig);
+
+        var calculator = this.prepareCalculator(calculatorConfig);
+        
+        var clean_snapshots = this._convertNullToBlank(snapshots);
+        if (this.allowed_oids !== null) {
+            clean_snapshots = this._getAllowedSnapshots(clean_snapshots);
+        }
+        if ( clean_snapshots.length > 0 ) {
+            calculator.addSnapshots(clean_snapshots, this._getStartDate(clean_snapshots), this._getEndDate(clean_snapshots));
+        }
+        var chart_data = this._transformLumenizeDataToHighchartsSeries(calculator, seriesConfig);
+        
+        // check for false
+        Ext.Array.each(chart_data.series,function(series){
+            if ( series.name === "" ) {
+                series.name = "None";
+            }
+            
+            if (series.name === false) {
+                series.name = "False";
+            }
+            
+            if (series.name === true) {
+                series.name = "True";
+            }
+        });
+        
+        return chart_data;
+    },
+    _convertNullToBlank:function(snapshots){
+        var number_of_snapshots = snapshots.length;
+        for ( var i=0;i<number_of_snapshots;i++ ) {
+            if ( snapshots[i][this.group_by_field] === null ) {
+                snapshots[i][this.group_by_field] = "";
+            }
+        }
+        return snapshots;
+    }
+
+
+        
+        
+});
+
+                Ext.define('Rally.SolutionArchitect.Chart',{
+    extend: 'Rally.ui.chart.Chart',
+    alias: 'widget.progresschart',
+
+    itemId: 'rally-chart',
+    chartData: {},
+    loadMask: false,
+    chartColors : ['#0000FF', '#87CEEB', '#008000'],
+    chartConfig: {
+        
+        chart: {
+            type: 'column'
+        },
+        title: {
+            text: 'MVP Burndown'
+        },
+        xAxis: {
+                title: {
+                    text: 'Iteration'
+                }
+        },
+        yAxis: [
+            {
+                title: {
+                    text: 'Points'
+                }
+            }
+        ],
+        plotOptions: {
+            series : {
+                stacking : 'normal'
+            }
+        }
+    },
+    constructor: function (config) {
+        this.callParent(arguments);
+        if (config.title){
+            this.chartConfig.title = config.title;
+        }
+    }
+});
+                Ext.define('CustomApp', {
+	extend: 'Rally.app.App',
+	componentCls: 'app',
+	items : [
+		{xtype:'container',itemId:'display_box',margin:10}
+	],
+	maxMonths : 6,
+	additionalFields : "Priority".split(),
+	mvpExpression : "snapshot.Priority === 'MVP'",
+	launch: function() {
+		var me = this;
+		// read all iterations
+		// read all story snapshots
+		// create calculator and metrics based on total backlog, mvp stories and accepted stories
+		// chart it.
+		Deft.Promise.all([
+			me.getIterations(),
+			me.getSnapshots(),
+			me.getLastState()
+		],me).then({
+			success : function(results) {
+				console.log("results",results);
+				var chartData = me.prepareChartData(results[0],results[1],results[2]);
+				console.log("chartData",chartData);
+
+				if (!_.isUndefined(me.chart)) {
+					me.remove(that.chart);
+				}
+				me.chart = Ext.create('Rally.SolutionArchitect.Chart', {
+					itemId: 'rally-chart',
+					chartData: chartData
+				});
+				me.add(me.chart);
+			},
+			failure : function(error) {
+				console.log("error---",error);
+			}
+		});
+	},
+
+	prepareChartData : function( iterations, snapshots, lastState ) {
+		var me = this;
+
+		var dateRange = me.getDateRange( iterations );
+		var calculator = Ext.create('Rally.SolutionsArchitect.TimeSeriesCalculator',{
+			startDate : dateRange.start,
+			endDate : dateRange.end,
+			mvpExpression : me.mvpExpression,
+			lastState : lastState
+		});
+		var data = calculator.runCalculation(_.map(snapshots,function(s){return s.data;}));
+		// console.log("data",data);
+
+		var series = _.map(["MVP","Non-MVP","Completed"],function(s) {
+			var sdata = _.find(data.series,function(sr) { return sr.name === s});
+			var today = moment();
+			// console.log("sdata",sdata);
+			return {
+				name : s,
+				type : 'column',
+				data : _.map(iterations,function(i) { 
+					// 0: "2014-11-03"
+					var endDate = "" + moment(i.raw.EndDate).format("YYYY-MM-DD");
+					var x = _.findIndex(data.categories,function(c) { return c == endDate });
+					if (moment(i.raw.EndDate)>today) 
+						return null;
+					else
+						return sdata.data[x];
+				})
+			}
+		});
+
+		var categories = _.map(iterations,function(i) { 
+			return i.get("Name") + " [" + 
+				moment(i.raw.EndDate).format("MMM DD")
+			+  "]";
+		});
+
+		return { series : series, categories : categories };
+	},
+
+	getDateRange : function(iterations) {
+		var start = _.min( iterations, function(iteration){return moment(iteration.get("StartDate"))});
+		var end   = _.max( iterations, function(iteration){return moment(iteration.get("EndDate"))});
+		// console.log("start",start,"end",end);
+		return { start: start.raw.StartDate, end : end.raw.EndDate};
+	},
+
+	getLastState : function() {
+
+		var me = this;
+		var deferred = Ext.create('Deft.Deferred');
+		Rally.data.ModelFactory.getModel({
+		    type: 'UserStory',
+		    success: function(model) {
+		        model.getField('ScheduleState').getAllowedValueStore().load({
+		            callback: function(records, operation, success) {
+		            	console.log(records);
+		            	var lastState = _.last(records).get("StringValue");
+		            	console.log("lastState",lastState);
+		        		deferred.resolve(lastState)
+		            }
+		        });
+		    }
+		});
+		return deferred.promise;
+	},
+
+	getIterations : function() {
+		var me = this;
+		var deferred = Ext.create('Deft.Deferred');
+		var filter = Ext.create('Rally.data.wsapi.Filter', {
+            property : 'StartDate', operator : '>=', value : moment().subtract(me.maxMonths,"months").toISOString()
+        });
+        filter = filter.and(
+			Ext.create('Rally.data.wsapi.Filter', {
+            	property : 'StartDate', operator : '<=', value : moment().add(me.maxMonths,"months").toISOString()
+        	})
+        );
+		me._loadAStoreWithAPromise(
+			"Iteration", 
+			["Name","EndDate","StartDate"], 
+			[filter],
+			{
+				projectScopeDown : false,
+				projectScopeUp : false
+			}
+		).then({
+			scope: me,
+			success: function(values) {
+				deferred.resolve(values);
+			},
+			failure: function(error) {
+				deferred.resolve([]);
+			}
+		});
+		return deferred.promise;
+	},
+
+	getSnapshots : function() {
+		var me = this;
+		var deferred = Ext.create('Deft.Deferred');
+		me.showMask("Loading snapshots...");
+		// find,fetch,hydrate,ctx
+		me._loadASnapShotStoreWithAPromise(
+			{
+				_TypeHierarchy : { "$in" : ["HierarchicalRequirement"] },
+				_ProjectHierarchy : { "$in" : [me.getContext().getProject().ObjectID]},
+				"$or" : [
+					{_ValidFrom : { "$gt" : (moment().subtract(me.maxMonths,"months")).toISOString() }},
+					{"__At": "current"}
+				],
+				Children : null
+			}, 
+			["_TypeHierarchy","ObjectID","FormattedID","PlanEstimate","ScheduleState"].concat(me.additionalFields), 
+			["_TypeHierarchy","ScheduleState"],
+			null
+		).then({
+			scope: me,
+			success: function(values) {
+				me.hideMask();
+				deferred.resolve(values);
+			},
+			failure: function(error) {
+				console.log("error",error);
+				deferred.resolve([]);
+			}
+		});
+		return deferred.promise;
+	},
+
+	_loadAStoreWithAPromise: function(model_name, model_fields, filters,ctx,order) {
+		var deferred = Ext.create('Deft.Deferred');
+		var me = this;
+		  
+		var config = {
+			model: model_name,
+			fetch: model_fields,
+			filters: filters,
+			limit: 'Infinity'
+		};
+		if (!_.isUndefined(ctx)&&!_.isNull(ctx)) {
+			config.context = ctx;
+		}
+		if (!_.isUndefined(order)&&!_.isNull(order)) {
+			config.order = order;
+		}
+
+		Ext.create('Rally.data.wsapi.Store', config ).load({
+			callback : function(records, operation, successful) {
+				if (successful){
+					deferred.resolve(records);
+				} else {
+					deferred.reject('Problem loading: ' + operation.error.errors.join('. '));
+				}
+			}
+		});
+		return deferred.promise;
+	},
+
+	_loadASnapShotStoreWithAPromise: function(find, fetch, hydrate, ctx) {
+		var me = this;
+		var deferred = Ext.create('Deft.Deferred');
+		  
+		var config = {
+			find : find,
+			fetch: fetch,
+			hydrate : hydrate,
+			pageSize : 10000,
+			limit: 'Infinity'
+		};
+
+		if (!_.isUndefined(ctx)) { config.context = ctx;}
+
+		var storeConfig = Ext.merge(config, {
+			removeUnauthorizedSnapshots : true,
+			autoLoad : true,
+			listeners: {
+			   load: function(store, data, success) {
+					deferred.resolve(data);
+				}
+			},
+		});
+		console.log("storeConfig",storeConfig);
+		Ext.create('Rally.data.lookback.SnapshotStore', storeConfig);
+		return deferred.promise;
+	},
+    showMask: function(msg) {
+        if ( this.getEl() ) { 
+            this.getEl().unmask();
+            this.getEl().mask(msg);
+        }
+    },
+    hideMask: function() {
+        this.getEl().unmask();
+    },
+
+
+});
+
+
+            Rally.launchApp('CustomApp', {
+                name:"mvp-backlog-burndown",
+	            parentRepos:""
+            });
+
+        });
+    </script>
+
+
+
+    <style type="text/css">
+        .app {
+  /* Add app styles here */
+}
+
+    </style>
+</head>
+<body>
+</body>
+</html>
