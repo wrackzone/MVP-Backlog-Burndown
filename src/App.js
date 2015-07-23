@@ -5,8 +5,8 @@ Ext.define('CustomApp', {
 		{xtype:'container',itemId:'display_box',margin:10}
 	],
 	maxMonths : 6,
-	additionalFields : "Priority".split(),
-	mvpExpression : "snapshot.Priority === 'MVP'",
+	additionalFields : "c_Priority".split(),
+	mvpExpression : "snapshot.c_Priority === 'MVP'",
 	launch: function() {
 		var me = this;
 		// read all iterations
