@@ -128,6 +128,8 @@ Ext.define('CustomApp', {
 		).then({
 			scope: me,
 			success: function(values) {
+				// sort the iterations by start date
+				values = _.sortBy(values,function(value) { return moment(value.raw.StartDate);});
 				deferred.resolve(values);
 			},
 			failure: function(error) {
@@ -140,7 +142,7 @@ Ext.define('CustomApp', {
 	getSnapshots : function() {
 		var me = this;
 		var deferred = Ext.create('Deft.Deferred');
-		me.showMask("Loading snapshots...");
+		// me.showMask("Loading snapshots...");
 		// find,fetch,hydrate,ctx
 		me._loadASnapShotStoreWithAPromise(
 			{
@@ -158,7 +160,7 @@ Ext.define('CustomApp', {
 		).then({
 			scope: me,
 			success: function(values) {
-				me.hideMask();
+				// me.hideMask();
 				deferred.resolve(values);
 			},
 			failure: function(error) {

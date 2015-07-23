@@ -3,7 +3,7 @@
 <head>
     <title>mvp-backlog-burndown</title>
 
-    <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
+    <script type="text/javascript" src="/apps/2.0rc3/sdk.js"></script>
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.10.3/moment.min.js"></script>
     <script type="text/javascript" src="https://rally1.rallydev.com/apps/2.0rc3/lib/analytics/analytics-all.js"></script>
 
@@ -378,6 +378,8 @@
 		).then({
 			scope: me,
 			success: function(values) {
+				// sort the iterations by start date
+				values = _.sortBy(values,function(value) { return moment(value.raw.StartDate);});
 				deferred.resolve(values);
 			},
 			failure: function(error) {
@@ -390,7 +392,7 @@
 	getSnapshots : function() {
 		var me = this;
 		var deferred = Ext.create('Deft.Deferred');
-		me.showMask("Loading snapshots...");
+		// me.showMask("Loading snapshots...");
 		// find,fetch,hydrate,ctx
 		me._loadASnapShotStoreWithAPromise(
 			{
@@ -408,7 +410,7 @@
 		).then({
 			scope: me,
 			success: function(values) {
-				me.hideMask();
+				// me.hideMask();
 				deferred.resolve(values);
 			},
 			failure: function(error) {
