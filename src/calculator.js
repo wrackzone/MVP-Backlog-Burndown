@@ -33,7 +33,9 @@ Ext.define("Rally.SolutionsArchitect.TimeSeriesCalculator", {
          endDate: null,
          startDate: null,
          workDays: 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday'.split(), //# They work on Sundays
-         mvpExpression : null,
+         useMVP : false,
+         mvpField : "",
+         mvpValue : "",
          lastState : null
     },
     constructor: function (config) {
@@ -83,20 +85,27 @@ Ext.define("Rally.SolutionsArchitect.TimeSeriesCalculator", {
         return state === "Accepted" || state === that.lastState;
       }
 
+      var isMVP = function(snapshot) {
+        return snapshot[that.mvpField] === that.mvpValue;
+      }
+
       return [
         { 
           "as": "MVP",
           "f": function(snapshot) { 
-            // console.log("mvp:",snapshot,that.mvpExpression,eval(that.mvpExpression));
-            return ( !accepted(snapshot.ScheduleState) && eval(that.mvpExpression) === true /*snapshot.Priority === "MVP"*/ ) ? 
-              snapshot.PlanEstimate : 0 ;
+            return ( that.useMVP===true ? ( isMVP(snapshot) ? snapshot.PlanEstimate : 0) : 0);
           }
         },
         { 
           "as": "Non-MVP",
           "f": function(snapshot) { 
-            return ( !accepted(snapshot.ScheduleState) && eval(that.mvpExpression) === false /*snapshot.Priority !== "MVP"*/ ) ? 
-              snapshot.PlanEstimate : 0 ;
+            return ( that.useMVP===true ? ( !isMVP(snapshot) ? snapshot.PlanEstimate : 0) : 0);
+          }
+        },
+        { 
+          "as": "ToDo",
+          "f": function(snapshot) { 
+            return ( !accepted(snapshot.ScheduleState) ) ? snapshot.PlanEstimate : 0 ;
           }
         },
         { 
@@ -123,6 +132,12 @@ Ext.define("Rally.SolutionsArchitect.TimeSeriesCalculator", {
     getMetrics: function () {
 
       return [
+        {
+          as : 'ToDo',
+          field : 'ToDo',
+          f : 'sum',
+          display : 'column'
+        },
         {
           as : 'Completed',
           field : 'Completed',

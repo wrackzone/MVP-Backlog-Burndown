@@ -5,10 +5,14 @@ Ext.define('CustomApp', {
 		{xtype:'container',itemId:'display_box',margin:10}
 	],
 	maxMonths : 6,
-	additionalFields : "c_Priority".split(),
-	mvpExpression : "snapshot.c_Priority === 'MVP'",
 	launch: function() {
 		var me = this;
+		me.useMVP   = me.getSetting("usemvp")===true || me.getSetting("usemvp")==="true" ;
+		me.mvpField = me.getSetting("mvpfield");
+		me.mvpValue = me.getSetting("mvpvalue");
+
+		console.log(me.useMVP,me.mvpField,me.mvpValue);
+
 		// read all iterations
 		// read all story snapshots
 		// create calculator and metrics based on total backlog, mvp stories and accepted stories
@@ -28,7 +32,8 @@ Ext.define('CustomApp', {
 				}
 				me.chart = Ext.create('Rally.SolutionArchitect.Chart', {
 					itemId: 'rally-chart',
-					chartData: chartData
+					chartData: chartData,
+					chartColors : me.useMVP === true ? ['#0000FF', '#87CEEB', '#008000'] : ['#87CEEB', '#008000']
 				});
 				me.add(me.chart);
 			},
@@ -45,13 +50,22 @@ Ext.define('CustomApp', {
 		var calculator = Ext.create('Rally.SolutionsArchitect.TimeSeriesCalculator',{
 			startDate : dateRange.start,
 			endDate : dateRange.end,
-			mvpExpression : me.mvpExpression,
+			useMVP : me.useMVP,
+			mvpField : me.mvpField,
+			mvpValue : me.mvpValue,
 			lastState : lastState
 		});
 		var data = calculator.runCalculation(_.map(snapshots,function(s){return s.data;}));
 		// console.log("data",data);
 
-		var series = _.map(["MVP","Non-MVP","Completed"],function(s) {
+		var seriesNames = []
+		if (me.useMVP===true) {
+			seriesNames = ["MVP","Non-MVP","Completed"]
+		} else {
+			seriesNames = ["ToDo","Completed"]
+		}
+
+		var series = _.map(seriesNames,function(s) {
 			var sdata = _.find(data.series,function(sr) { return sr.name === s});
 			var today = moment();
 			// console.log("sdata",sdata);
@@ -154,7 +168,7 @@ Ext.define('CustomApp', {
 				],
 				Children : null
 			}, 
-			["_TypeHierarchy","ObjectID","FormattedID","PlanEstimate","ScheduleState"].concat(me.additionalFields), 
+			["_TypeHierarchy","ObjectID","FormattedID","PlanEstimate","ScheduleState"].concat( me.useMVP===true ? me.mvpField : "" ), 
 			["_TypeHierarchy","ScheduleState"],
 			null
 		).then({
@@ -236,6 +250,49 @@ Ext.define('CustomApp', {
     hideMask: function() {
         this.getEl().unmask();
     },
+
+
+    config: {
+        defaultSettings: {
+            usemvp  : false,
+            mvpfield : "c_KanbanStateX",
+            mvpvalue : "One"
+        }
+    },
+
+    getSettingsFields: function() {
+        var me = this;
+        
+        return [
+	        {
+	            name: 'usemvp',
+	            xtype:'rallycheckboxfield',
+	            fieldLabel: 'Show MVP',
+	            labelWidth: 100,
+	            labelAlign: 'left',
+	            minWidth: 200,
+	            margin: 10,
+	        },
+			{
+	            name: 'mvpfield',
+	            xtype:'rallytextfield',
+	            fieldLabel: 'MVP Custom Field Name',
+	            labelWidth: 100,
+	            labelAlign: 'left',
+	            minWidth: 200,
+	            margin: 10,
+	        },
+	        {
+	            name: 'mvpvalue',
+	            xtype:'rallycheckboxfield',
+	            fieldLabel: 'MVP Field Value',
+	            labelWidth: 100,
+	            labelAlign: 'left',
+	            minWidth: 200,
+	            margin: 10,
+	        }
+        ];
+    }
 
 
 });

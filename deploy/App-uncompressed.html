@@ -44,7 +44,9 @@
          endDate: null,
          startDate: null,
          workDays: 'Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday'.split(), //# They work on Sundays
-         mvpExpression : null,
+         useMVP : false,
+         mvpField : "",
+         mvpValue : "",
          lastState : null
     },
     constructor: function (config) {
@@ -94,20 +96,27 @@
         return state === "Accepted" || state === that.lastState;
       }
 
+      var isMVP = function(snapshot) {
+        return snapshot[that.mvpField] === that.mvpValue;
+      }
+
       return [
         { 
           "as": "MVP",
           "f": function(snapshot) { 
-            // console.log("mvp:",snapshot,that.mvpExpression,eval(that.mvpExpression));
-            return ( !accepted(snapshot.ScheduleState) && eval(that.mvpExpression) === true /*snapshot.Priority === "MVP"*/ ) ? 
-              snapshot.PlanEstimate : 0 ;
+            return ( that.useMVP===true ? ( isMVP(snapshot) ? snapshot.PlanEstimate : 0) : 0);
           }
         },
         { 
           "as": "Non-MVP",
           "f": function(snapshot) { 
-            return ( !accepted(snapshot.ScheduleState) && eval(that.mvpExpression) === false /*snapshot.Priority !== "MVP"*/ ) ? 
-              snapshot.PlanEstimate : 0 ;
+            return ( that.useMVP===true ? ( !isMVP(snapshot) ? snapshot.PlanEstimate : 0) : 0);
+          }
+        },
+        { 
+          "as": "ToDo",
+          "f": function(snapshot) { 
+            return ( !accepted(snapshot.ScheduleState) ) ? snapshot.PlanEstimate : 0 ;
           }
         },
         { 
@@ -134,6 +143,12 @@
     getMetrics: function () {
 
       return [
+        {
+          as : 'ToDo',
+          field : 'ToDo',
+          f : 'sum',
+          display : 'column'
+        },
         {
           as : 'Completed',
           field : 'Completed',
@@ -214,19 +229,27 @@
     itemId: 'rally-chart',
     chartData: {},
     loadMask: false,
-    chartColors : ['#0000FF', '#87CEEB', '#008000'],
+    // chartColors : ['#0000FF', '#87CEEB', '#008000'],
     chartConfig: {
         
         chart: {
             type: 'column'
         },
         title: {
-            text: 'MVP Burndown'
+            text: 'Project Burndown'
         },
+        
         xAxis: {
                 title: {
                     text: 'Iteration'
+                },
+                labels: {
+                rotation: -45,
+                style: {
+                    fontSize: '10px',
+                    fontFamily: 'Verdana, sans-serif'
                 }
+            }
         },
         yAxis: [
             {
@@ -235,7 +258,17 @@
                 }
             }
         ],
+
         plotOptions: {
+            column : {
+                dataLabels : {
+                    enabled : true,
+                    color: 'white',
+                    formatter : function() {
+                        return this.y !== 0 ? (this.y < 0 ? this.y * -1 : this.y) : "";
+                    }
+                }
+            },
             series : {
                 stacking : 'normal'
             }
@@ -255,10 +288,14 @@
 		{xtype:'container',itemId:'display_box',margin:10}
 	],
 	maxMonths : 6,
-	additionalFields : "c_Priority".split(),
-	mvpExpression : "snapshot.c_Priority === 'MVP'",
 	launch: function() {
 		var me = this;
+		me.useMVP   = me.getSetting("usemvp")===true || me.getSetting("usemvp")==="true" ;
+		me.mvpField = me.getSetting("mvpfield");
+		me.mvpValue = me.getSetting("mvpvalue");
+
+		console.log(me.useMVP,me.mvpField,me.mvpValue);
+
 		// read all iterations
 		// read all story snapshots
 		// create calculator and metrics based on total backlog, mvp stories and accepted stories
@@ -278,7 +315,8 @@
 				}
 				me.chart = Ext.create('Rally.SolutionArchitect.Chart', {
 					itemId: 'rally-chart',
-					chartData: chartData
+					chartData: chartData,
+					chartColors : me.useMVP === true ? ['#0000FF', '#87CEEB', '#008000'] : ['#87CEEB', '#008000']
 				});
 				me.add(me.chart);
 			},
@@ -295,13 +333,22 @@
 		var calculator = Ext.create('Rally.SolutionsArchitect.TimeSeriesCalculator',{
 			startDate : dateRange.start,
 			endDate : dateRange.end,
-			mvpExpression : me.mvpExpression,
+			useMVP : me.useMVP,
+			mvpField : me.mvpField,
+			mvpValue : me.mvpValue,
 			lastState : lastState
 		});
 		var data = calculator.runCalculation(_.map(snapshots,function(s){return s.data;}));
 		// console.log("data",data);
 
-		var series = _.map(["MVP","Non-MVP","Completed"],function(s) {
+		var seriesNames = []
+		if (me.useMVP===true) {
+			seriesNames = ["MVP","Non-MVP","Completed"]
+		} else {
+			seriesNames = ["ToDo","Completed"]
+		}
+
+		var series = _.map(seriesNames,function(s) {
 			var sdata = _.find(data.series,function(sr) { return sr.name === s});
 			var today = moment();
 			// console.log("sdata",sdata);
@@ -404,7 +451,7 @@
 				],
 				Children : null
 			}, 
-			["_TypeHierarchy","ObjectID","FormattedID","PlanEstimate","ScheduleState"].concat(me.additionalFields), 
+			["_TypeHierarchy","ObjectID","FormattedID","PlanEstimate","ScheduleState"].concat( me.useMVP===true ? me.mvpField : "" ), 
 			["_TypeHierarchy","ScheduleState"],
 			null
 		).then({
@@ -486,6 +533,49 @@
     hideMask: function() {
         this.getEl().unmask();
     },
+
+
+    config: {
+        defaultSettings: {
+            usemvp  : false,
+            mvpfield : "c_KanbanStateX",
+            mvpvalue : "One"
+        }
+    },
+
+    getSettingsFields: function() {
+        var me = this;
+        
+        return [
+	        {
+	            name: 'usemvp',
+	            xtype:'rallycheckboxfield',
+	            fieldLabel: 'Show MVP',
+	            labelWidth: 100,
+	            labelAlign: 'left',
+	            minWidth: 200,
+	            margin: 10,
+	        },
+			{
+	            name: 'mvpfield',
+	            xtype:'rallytextfield',
+	            fieldLabel: 'MVP Custom Field Name',
+	            labelWidth: 100,
+	            labelAlign: 'left',
+	            minWidth: 200,
+	            margin: 10,
+	        },
+	        {
+	            name: 'mvpvalue',
+	            xtype:'rallycheckboxfield',
+	            fieldLabel: 'MVP Field Value',
+	            labelWidth: 100,
+	            labelAlign: 'left',
+	            minWidth: 200,
+	            margin: 10,
+	        }
+        ];
+    }
 
 
 });
