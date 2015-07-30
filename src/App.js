@@ -1,3 +1,5 @@
+var app = null;
+
 Ext.define('CustomApp', {
 	extend: 'Rally.app.App',
 	componentCls: 'app',
@@ -7,6 +9,7 @@ Ext.define('CustomApp', {
 	maxMonths : 6,
 	launch: function() {
 		var me = this;
+		app = this;
 		me.useMVP   = me.getSetting("usemvp")===true || me.getSetting("usemvp")==="true" ;
 		me.mvpField = me.getSetting("mvpfield");
 		me.mvpValue = me.getSetting("mvpvalue");
@@ -17,12 +20,15 @@ Ext.define('CustomApp', {
 		// read all story snapshots
 		// create calculator and metrics based on total backlog, mvp stories and accepted stories
 		// chart it.
+
+
 		Deft.Promise.all([
 			me.getIterations(),
 			me.getSnapshots(),
 			me.getLastState()
 		],me).then({
 			success : function(results) {
+				me.hideMask();
 				console.log("results",results);
 				var chartData = me.prepareChartData(results[0],results[1],results[2]);
 				console.log("chartData",chartData);
@@ -38,6 +44,7 @@ Ext.define('CustomApp', {
 				me.add(me.chart);
 			},
 			failure : function(error) {
+				me.hideMask();
 				console.log("error---",error);
 			}
 		});
@@ -85,9 +92,9 @@ Ext.define('CustomApp', {
 		});
 
 		var categories = _.map(iterations,function(i) { 
-			return i.get("Name") + " [" + 
-				moment(i.raw.EndDate).format("MMM DD")
-			+  "]";
+			return i.get("Name"); // + " [" + 
+				// moment(i.raw.EndDate).format("MMM DD")
+			// +  "]";
 		});
 
 		return { series : series, categories : categories };
@@ -156,7 +163,7 @@ Ext.define('CustomApp', {
 	getSnapshots : function() {
 		var me = this;
 		var deferred = Ext.create('Deft.Deferred');
-		// me.showMask("Loading snapshots...");
+		me.showMask("Loading snapshots...");
 		// find,fetch,hydrate,ctx
 		me._loadASnapShotStoreWithAPromise(
 			{
@@ -222,7 +229,7 @@ Ext.define('CustomApp', {
 			find : find,
 			fetch: fetch,
 			hydrate : hydrate,
-			pageSize : 10000,
+			pageSize : 4000,
 			limit: 'Infinity'
 		};
 
@@ -242,9 +249,12 @@ Ext.define('CustomApp', {
 		return deferred.promise;
 	},
     showMask: function(msg) {
+    	console.log("show mask",app.getEl());
         if ( this.getEl() ) { 
             this.getEl().unmask();
             this.getEl().mask(msg);
+        } else {
+        	console.log("no element");
         }
     },
     hideMask: function() {
@@ -255,8 +265,8 @@ Ext.define('CustomApp', {
     config: {
         defaultSettings: {
             usemvp  : false,
-            mvpfield : "c_KanbanStateX",
-            mvpvalue : "One"
+            mvpfield : "",
+            mvpvalue : ""
         }
     },
 
@@ -284,7 +294,7 @@ Ext.define('CustomApp', {
 	        },
 	        {
 	            name: 'mvpvalue',
-	            xtype:'rallycheckboxfield',
+	            xtype:'rallytextfield',
 	            fieldLabel: 'MVP Field Value',
 	            labelWidth: 100,
 	            labelAlign: 'left',

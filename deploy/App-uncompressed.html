@@ -3,7 +3,7 @@
 <head>
     <title>mvp-backlog-burndown</title>
 
-    <script type="text/javascript" src="/apps/2.0rc3/sdk.js"></script>
+    <script type="text/javascript" src="/apps/2.0/sdk.js"></script>
     <script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.10.3/moment.min.js"></script>
     <script type="text/javascript" src="https://rally1.rallydev.com/apps/2.0rc3/lib/analytics/analytics-all.js"></script>
 
@@ -263,7 +263,7 @@
             column : {
                 dataLabels : {
                     enabled : true,
-                    color: 'white',
+                    color: '#274b6d',
                     formatter : function() {
                         return this.y !== 0 ? (this.y < 0 ? this.y * -1 : this.y) : "";
                     }
@@ -281,7 +281,9 @@
         }
     }
 });
-                Ext.define('CustomApp', {
+                var app = null;
+
+Ext.define('CustomApp', {
 	extend: 'Rally.app.App',
 	componentCls: 'app',
 	items : [
@@ -290,6 +292,7 @@
 	maxMonths : 6,
 	launch: function() {
 		var me = this;
+		app = this;
 		me.useMVP   = me.getSetting("usemvp")===true || me.getSetting("usemvp")==="true" ;
 		me.mvpField = me.getSetting("mvpfield");
 		me.mvpValue = me.getSetting("mvpvalue");
@@ -300,12 +303,15 @@
 		// read all story snapshots
 		// create calculator and metrics based on total backlog, mvp stories and accepted stories
 		// chart it.
+
+
 		Deft.Promise.all([
 			me.getIterations(),
 			me.getSnapshots(),
 			me.getLastState()
 		],me).then({
 			success : function(results) {
+				me.hideMask();
 				console.log("results",results);
 				var chartData = me.prepareChartData(results[0],results[1],results[2]);
 				console.log("chartData",chartData);
@@ -321,6 +327,7 @@
 				me.add(me.chart);
 			},
 			failure : function(error) {
+				me.hideMask();
 				console.log("error---",error);
 			}
 		});
@@ -368,9 +375,9 @@
 		});
 
 		var categories = _.map(iterations,function(i) { 
-			return i.get("Name") + " [" + 
-				moment(i.raw.EndDate).format("MMM DD")
-			+  "]";
+			return i.get("Name"); // + " [" + 
+				// moment(i.raw.EndDate).format("MMM DD")
+			// +  "]";
 		});
 
 		return { series : series, categories : categories };
@@ -439,7 +446,7 @@
 	getSnapshots : function() {
 		var me = this;
 		var deferred = Ext.create('Deft.Deferred');
-		// me.showMask("Loading snapshots...");
+		me.showMask("Loading snapshots...");
 		// find,fetch,hydrate,ctx
 		me._loadASnapShotStoreWithAPromise(
 			{
@@ -505,7 +512,7 @@
 			find : find,
 			fetch: fetch,
 			hydrate : hydrate,
-			pageSize : 10000,
+			pageSize : 4000,
 			limit: 'Infinity'
 		};
 
@@ -525,9 +532,12 @@
 		return deferred.promise;
 	},
     showMask: function(msg) {
+    	console.log("show mask",app.getEl());
         if ( this.getEl() ) { 
             this.getEl().unmask();
             this.getEl().mask(msg);
+        } else {
+        	console.log("no element");
         }
     },
     hideMask: function() {
@@ -538,8 +548,8 @@
     config: {
         defaultSettings: {
             usemvp  : false,
-            mvpfield : "c_KanbanStateX",
-            mvpvalue : "One"
+            mvpfield : "",
+            mvpvalue : ""
         }
     },
 
@@ -567,7 +577,7 @@
 	        },
 	        {
 	            name: 'mvpvalue',
-	            xtype:'rallycheckboxfield',
+	            xtype:'rallytextfield',
 	            fieldLabel: 'MVP Field Value',
 	            labelWidth: 100,
 	            labelAlign: 'left',

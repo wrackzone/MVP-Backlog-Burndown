@@ -39,7 +39,7 @@ Ext.define('Rally.SolutionArchitect.Chart',{
             column : {
                 dataLabels : {
                     enabled : true,
-                    color: 'white',
+                    color: '#274b6d',
                     formatter : function() {
                         return this.y !== 0 ? (this.y < 0 ? this.y * -1 : this.y) : "";
                     }
