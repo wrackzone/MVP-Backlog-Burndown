@@ -20,28 +20,80 @@ Ext.define('CustomApp', {
 		// read all story snapshots
 		// create calculator and metrics based on total backlog, mvp stories and accepted stories
 		// chart it.
-
-
-		Deft.Promise.all([
-			me.getIterations(),
-			me.getSnapshots(),
-			me.getLastState()
+		// Deft.Promise.all([
+			Deft.Chain.pipeline([
+			me.getLastState,
+			me.getIterations,
+			me.getSnapshots
 		],me).then({
 			success : function(results) {
 				me.hideMask();
-				console.log("results",results);
-				var chartData = me.prepareChartData(results[0],results[1],results[2]);
-				console.log("chartData",chartData);
+
+				var accepted = function(state) {
+        			return state === "Accepted" || state === me.lastState;
+      			}
+
+				// for each set of results
+				// 	group by object
+				//  sort group by valid from date
+				//  take the last value
+				//	reduce the last values by category.
+				var seriesData = _.map(results,function(result,i){
+					var snapsByID = _.groupBy(result,function(snapshot){return snapshot.get("ObjectID");});
+
+					var snapshots = _.map(_.keys(snapsByID),function(id) {
+						return _.last(
+							_.sortBy(snapsByID[id],function(s){ return moment(s.get("_ValidFrom"))})
+						);
+					});
+
+					var completedPoints = _.reduce(snapshots,
+						function(memo,snapshot){
+							return memo + (accepted(snapshot.get("ScheduleState")) ? snapshot.get("PlanEstimate") : 0);
+					},0);
+					var todoPoints = _.reduce(snapshots,
+						function(memo,snapshot){
+							return memo + (!accepted(snapshot.get("ScheduleState")) ? snapshot.get("PlanEstimate") : 0);
+					},0);
+
+					return {
+						iteration : me.iterations[i].get("Name"),
+						endDate : me.iterations[i].raw.EndDate,
+						Completed : completedPoints * -1, // show below y axis
+						ToDo : todoPoints
+					}
+				});
+
+				var series = _.map(["ToDo","Completed"],function(seriesName) {
+					return {
+						name : seriesName,
+						type : 'column',
+						data : _.map(seriesData,function(sd){
+							return moment(sd.endDate) <= moment() ? sd[seriesName] : null
+						})
+					}
+				})
+
+				console.log("seriesData",seriesData,series);
+
+				var categories = _.map(me.iterations,function(i) { return i.get("Name"); });
 
 				if (!_.isUndefined(me.chart)) {
 					me.remove(that.chart);
 				}
 				me.chart = Ext.create('Rally.SolutionArchitect.Chart', {
 					itemId: 'rally-chart',
-					chartData: chartData,
+					chartData: {
+						series : series,
+						categories : categories,
+						chartColors : me.useMVP === true ? ['#0000FF', '#87CEEB', '#008000'] : ['#87CEEB', '#008000']
+					},
 					chartColors : me.useMVP === true ? ['#0000FF', '#87CEEB', '#008000'] : ['#87CEEB', '#008000']
 				});
 				me.add(me.chart);
+
+
+
 			},
 			failure : function(error) {
 				me.hideMask();
@@ -51,6 +103,7 @@ Ext.define('CustomApp', {
 	},
 
 	prepareChartData : function( iterations, snapshots, lastState ) {
+
 		var me = this;
 
 		var dateRange = me.getDateRange( iterations );
@@ -63,7 +116,7 @@ Ext.define('CustomApp', {
 			lastState : lastState
 		});
 		var data = calculator.runCalculation(_.map(snapshots,function(s){return s.data;}));
-		// console.log("data",data);
+		console.log("data",data);
 
 		var seriesNames = []
 		if (me.useMVP===true) {
@@ -83,9 +136,9 @@ Ext.define('CustomApp', {
 					// 0: "2014-11-03"
 					var endDate = "" + moment(i.raw.EndDate).format("YYYY-MM-DD");
 					var x = _.findIndex(data.categories,function(c) { return c == endDate });
-					if (moment(i.raw.EndDate)>today) 
-						return null;
-					else
+					// if (moment(i.raw.EndDate)>today) 
+					// 	return null;
+					// else
 						return sdata.data[x];
 				})
 			}
@@ -119,6 +172,7 @@ Ext.define('CustomApp', {
 		            	console.log(records);
 		            	var lastState = _.last(records).get("StringValue");
 		            	console.log("lastState",lastState);
+		            	me.lastState = lastState;
 		        		deferred.resolve(lastState)
 		            }
 		        });
@@ -151,6 +205,7 @@ Ext.define('CustomApp', {
 			success: function(values) {
 				// sort the iterations by start date
 				values = _.sortBy(values,function(value) { return moment(value.raw.StartDate);});
+				me.iterations = values;
 				deferred.resolve(values);
 			},
 			failure: function(error) {
@@ -160,35 +215,45 @@ Ext.define('CustomApp', {
 		return deferred.promise;
 	},
 
-	getSnapshots : function() {
+	getSnapshots : function(iterations) {
+		console.log("iterations",iterations);
 		var me = this;
+
+		var promises = _.map(iterations,function(iteration) {
+            var deferred = Ext.create('Deft.Deferred');
+			me._loadASnapShotStoreWithAPromise(
+				{
+					_TypeHierarchy : { "$in" : ["HierarchicalRequirement"] },
+					_ProjectHierarchy : { "$in" : [me.getContext().getProject().ObjectID]},
+					// __At : "current",
+					_ValidFrom : { "$lte" : iteration.raw.EndDate},
+					_ValidTo : { "$gte" : iteration.raw.EndDate},
+					Children : null
+				}, 
+				["ObjectID","FormattedID","PlanEstimate","ScheduleState"].concat( me.useMVP===true ? me.mvpField : "" ), 
+				["ScheduleState"],
+				null
+			).then({
+				scope: me,
+				success: function(values) {
+					deferred.resolve(values);
+				},
+				failure: function(error) {
+					console.log("error",error);
+					deferred.resolve([]);
+				}
+			});
+			return deferred.promise;
+        });
+
 		var deferred = Ext.create('Deft.Deferred');
-		me.showMask("Loading snapshots...");
-		// find,fetch,hydrate,ctx
-		me._loadASnapShotStoreWithAPromise(
-			{
-				_TypeHierarchy : { "$in" : ["HierarchicalRequirement"] },
-				_ProjectHierarchy : { "$in" : [me.getContext().getProject().ObjectID]},
-				"$or" : [
-					{_ValidFrom : { "$gt" : (moment().subtract(me.maxMonths,"months")).toISOString() }},
-					{"__At": "current"}
-				],
-				Children : null
-			}, 
-			["_TypeHierarchy","ObjectID","FormattedID","PlanEstimate","ScheduleState"].concat( me.useMVP===true ? me.mvpField : "" ), 
-			["_TypeHierarchy","ScheduleState"],
-			null
-		).then({
-			scope: me,
-			success: function(values) {
-				// me.hideMask();
-				deferred.resolve(values);
-			},
-			failure: function(error) {
-				console.log("error",error);
-				deferred.resolve([]);
-			}
-		});
+		Deft.Promise.all(promises).then( {
+            scope : me,
+            success : function(all) {
+                console.log("all",all);
+                deferred.resolve(all,iterations);
+            }
+        });
 		return deferred.promise;
 	},
 
@@ -249,7 +314,6 @@ Ext.define('CustomApp', {
 		return deferred.promise;
 	},
     showMask: function(msg) {
-    	console.log("show mask",app.getEl());
         if ( this.getEl() ) { 
             this.getEl().unmask();
             this.getEl().mask(msg);

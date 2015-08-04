@@ -111,7 +111,8 @@ Ext.define("Rally.SolutionsArchitect.TimeSeriesCalculator", {
         { 
           "as": "Completed",
           "f": function(snapshot) { 
-            // console.log("snapshot:",snapshot,snapshot.ScheduleState)
+            // if (accepted(snapshot.ScheduleState))
+              // console.log("snapshot:",snapshot,snapshot.ScheduleState);
             return ( accepted(snapshot.ScheduleState) ) ? 
               snapshot.PlanEstimate * -1 : 0 ;
           }

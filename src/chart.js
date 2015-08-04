@@ -37,9 +37,16 @@ Ext.define('Rally.SolutionArchitect.Chart',{
 
         plotOptions: {
             column : {
+
+
                 dataLabels : {
                     enabled : true,
-                    color: '#274b6d',
+                    // color: '#274b6d',
+                    borderRadius: 5,
+                    backgroundColor: 'rgba(252, 255, 197, 0.7)',
+                    borderWidth: 1,
+                    borderColor: '#AAA',
+
                     formatter : function() {
                         return this.y !== 0 ? (this.y < 0 ? this.y * -1 : this.y) : "";
                     }
