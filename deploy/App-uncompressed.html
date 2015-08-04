@@ -324,6 +324,10 @@ Ext.define('CustomApp', {
         			return state === "Accepted" || state === me.lastState;
       			}
 
+      			var isMVP = function(snapshot) {
+      				return snapshot.get(me.mvpField) === me.mvpValue;
+      			}
+
 				// for each set of results
 				// 	group by object
 				//  sort group by valid from date
@@ -346,24 +350,42 @@ Ext.define('CustomApp', {
 						function(memo,snapshot){
 							return memo + (!accepted(snapshot.get("ScheduleState")) ? snapshot.get("PlanEstimate") : 0);
 					},0);
+					var mvpToDo = _.reduce(snapshots,
+						function(memo,snapshot){
+							return memo + 
+								(me.useMVP===true && !(accepted(snapshot.get("ScheduleState"))) && isMVP(snapshot) ? 
+								snapshot.get("PlanEstimate") : null);
+					},0);
+					var nonMvpToDo = _.reduce(snapshots,
+						function(memo,snapshot){
+							return memo + 
+								(me.useMVP===true && !(accepted(snapshot.get("ScheduleState"))) && !isMVP(snapshot) ? 
+								snapshot.get("PlanEstimate") : 0);
+					},0);
+
 
 					return {
 						iteration : me.iterations[i].get("Name"),
 						endDate : me.iterations[i].raw.EndDate,
 						Completed : completedPoints * -1, // show below y axis
-						ToDo : todoPoints
+						ToDo : todoPoints,
+						MVP : mvpToDo,
+						NonMVP : nonMvpToDo
 					}
 				});
 
-				var series = _.map(["ToDo","Completed"],function(seriesName) {
-					return {
-						name : seriesName,
-						type : 'column',
-						data : _.map(seriesData,function(sd){
-							return moment(sd.endDate) <= moment() ? sd[seriesName] : null
-						})
+				var series = _.map(
+					me.useMVP !== true ? ["ToDo","Completed"] : ["MVP","NonMVP","Completed"],
+					function(seriesName) {
+						return {
+							name : seriesName,
+							type : 'column',
+							data : _.map(seriesData,function(sd){
+								return moment(sd.endDate) <= moment() ? sd[seriesName] : null
+							})
+						}
 					}
-				})
+				)
 
 				console.log("seriesData",seriesData,series);
 
