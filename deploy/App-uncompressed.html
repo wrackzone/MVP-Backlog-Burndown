@@ -304,6 +304,7 @@ Ext.define('CustomApp', {
 		me.useMVP   = me.getSetting("usemvp")===true || me.getSetting("usemvp")==="true" ;
 		me.mvpField = me.getSetting("mvpfield");
 		me.mvpValue = me.getSetting("mvpvalue");
+		me.maxMonths = parseInt(me.getSetting("maxMonths"));
 
 		console.log(me.useMVP,me.mvpField,me.mvpValue);
 
@@ -495,7 +496,9 @@ Ext.define('CustomApp', {
 	},
 
 	getIterations : function() {
+
 		var me = this;
+		console.log("Reading iterations for " + me.maxMonths + " months");
 		var deferred = Ext.create('Deft.Deferred');
 		var filter = Ext.create('Rally.data.wsapi.Filter', {
             property : 'StartDate', operator : '>=', value : moment().subtract(me.maxMonths,"months").toISOString()
@@ -643,7 +646,9 @@ Ext.define('CustomApp', {
         defaultSettings: {
             usemvp  : false,
             mvpfield : "",
-            mvpvalue : ""
+            mvpvalue : "",
+            maxMonths : 6
+
         }
     },
 
@@ -673,6 +678,15 @@ Ext.define('CustomApp', {
 	            name: 'mvpvalue',
 	            xtype:'rallytextfield',
 	            fieldLabel: 'MVP Field Value',
+	            labelWidth: 100,
+	            labelAlign: 'left',
+	            minWidth: 200,
+	            margin: 10,
+	        },
+	        {
+	            name: 'maxMonths',
+	            xtype:'rallytextfield',
+	            fieldLabel: 'Maximum number of previous months to include iterations from ',
 	            labelWidth: 100,
 	            labelAlign: 'left',
 	            minWidth: 200,
