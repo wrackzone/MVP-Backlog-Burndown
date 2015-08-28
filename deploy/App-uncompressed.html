@@ -364,9 +364,9 @@ Ext.define('CustomApp', {
 								snapshot.get("PlanEstimate") : 0);
 					},0);
 
-
 					return {
-						iteration : me.iterations[i].get("Name"),
+						// iteration : me.iterations[i].get("Name"),
+						iteration : me.iterations[i].raw.Name,
 						endDate : me.iterations[i].raw.EndDate,
 						Completed : completedPoints * -1, // show below y axis
 						ToDo : todoPoints,
@@ -390,7 +390,8 @@ Ext.define('CustomApp', {
 
 				console.log("seriesData",seriesData,series);
 
-				var categories = _.map(me.iterations,function(i) { return i.get("Name"); });
+				// var categories = _.map(me.iterations,function(i) { return i.get("Name"); });
+				var categories = _.map(me.iterations,function(i) { return i.raw.Name; });
 
 				if (!_.isUndefined(me.chart)) {
 					me.remove(that.chart);
@@ -414,64 +415,6 @@ Ext.define('CustomApp', {
 				console.log("error---",error);
 			}
 		});
-	},
-
-	prepareChartData : function( iterations, snapshots, lastState ) {
-
-		var me = this;
-
-		var dateRange = me.getDateRange( iterations );
-		var calculator = Ext.create('Rally.SolutionsArchitect.TimeSeriesCalculator',{
-			startDate : dateRange.start,
-			endDate : dateRange.end,
-			useMVP : me.useMVP,
-			mvpField : me.mvpField,
-			mvpValue : me.mvpValue,
-			lastState : lastState
-		});
-		var data = calculator.runCalculation(_.map(snapshots,function(s){return s.data;}));
-		console.log("data",data);
-
-		var seriesNames = []
-		if (me.useMVP===true) {
-			seriesNames = ["MVP","Non-MVP","Completed"]
-		} else {
-			seriesNames = ["ToDo","Completed"]
-		}
-
-		var series = _.map(seriesNames,function(s) {
-			var sdata = _.find(data.series,function(sr) { return sr.name === s});
-			var today = moment();
-			// console.log("sdata",sdata);
-			return {
-				name : s,
-				type : 'column',
-				data : _.map(iterations,function(i) { 
-					// 0: "2014-11-03"
-					var endDate = "" + moment(i.raw.EndDate).format("YYYY-MM-DD");
-					var x = _.findIndex(data.categories,function(c) { return c == endDate });
-					// if (moment(i.raw.EndDate)>today) 
-					// 	return null;
-					// else
-						return sdata.data[x];
-				})
-			}
-		});
-
-		var categories = _.map(iterations,function(i) { 
-			return i.get("Name"); // + " [" + 
-				// moment(i.raw.EndDate).format("MMM DD")
-			// +  "]";
-		});
-
-		return { series : series, categories : categories };
-	},
-
-	getDateRange : function(iterations) {
-		var start = _.min( iterations, function(iteration){return moment(iteration.get("StartDate"))});
-		var end   = _.max( iterations, function(iteration){return moment(iteration.get("EndDate"))});
-		// console.log("start",start,"end",end);
-		return { start: start.raw.StartDate, end : end.raw.EndDate};
 	},
 
 	getLastState : function() {
@@ -520,7 +463,17 @@ Ext.define('CustomApp', {
 			scope: me,
 			success: function(values) {
 				// sort the iterations by start date
-				values = _.sortBy(values,function(value) { return moment(value.raw.StartDate);});
+				values.push(
+				{
+					raw : {
+						StartDate : moment().toISOString(),
+						EndDate : moment().toISOString(),
+						Name : "Today"
+					}
+				});
+
+				values = _.sortBy(values,function(value) { return moment(value.raw.EndDate);});
+				console.log(_.map(values,function(v){return v.raw.Name}));
 				me.iterations = values;
 				deferred.resolve(values);
 			},
