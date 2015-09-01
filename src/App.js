@@ -317,7 +317,7 @@ Ext.define('CustomApp', {
             usemvp  : false,
             mvpfield : "",
             mvpvalue : "",
-            maxMonths : 1
+            maxMonths : 6
 
         }
     },
