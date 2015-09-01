@@ -52,6 +52,13 @@ Ext.define('CustomApp', {
 						);
 					});
 
+					// console.log("snapshots",_.map(snapshots,function(s){return s.get("FormattedID")+":"+s.get("PlanEstimate")}));
+					// console.log("snapshots",_.map(
+					// 	_.filter(snapshots,function(s){return !accepted(s.get("ScheduleState"))}),
+					// 		function(s){return s.get("FormattedID")+":"+s.get("ScheduleState")+":"+s.get("PlanEstimate")}
+					// 	)
+					// );
+
 					var completedPoints = _.reduce(snapshots,
 						function(memo,snapshot){
 							return memo + (accepted(snapshot.get("ScheduleState")) ? snapshot.get("PlanEstimate") : 0);
@@ -202,7 +209,8 @@ Ext.define('CustomApp', {
 			me._loadASnapShotStoreWithAPromise(
 				{
 					_TypeHierarchy : { "$in" : ["HierarchicalRequirement"] },
-					_ProjectHierarchy : { "$in" : [me.getContext().getProject().ObjectID]},
+					// _ProjectHierarchy : { "$in" : [me.getContext().getProject().ObjectID]},
+					Project : me.getContext().getProject().ObjectID,
 					// __At : "current",
 					_ValidFrom : { "$lte" : iteration.raw.EndDate},
 					_ValidTo : { "$gte" : iteration.raw.EndDate},
@@ -309,7 +317,7 @@ Ext.define('CustomApp', {
             usemvp  : false,
             mvpfield : "",
             mvpvalue : "",
-            maxMonths : 6
+            maxMonths : 1
 
         }
     },
