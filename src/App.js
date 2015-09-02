@@ -9,6 +9,7 @@ Ext.define('CustomApp', {
 	maxMonths : 6,
 	launch: function() {
 		var me = this;
+		console.log("context",me.getContext().getProjectScopeDown());
 		app = this;
 		me.useMVP   = me.getSetting("usemvp")===true || me.getSetting("usemvp")==="true" ;
 		me.mvpField = me.getSetting("mvpfield");
@@ -206,16 +207,26 @@ Ext.define('CustomApp', {
 
 		var promises = _.map(iterations,function(iteration) {
             var deferred = Ext.create('Deft.Deferred');
+
+            var find = {
+				_TypeHierarchy : { "$in" : ["HierarchicalRequirement"] },
+				// _ProjectHierarchy : { "$in" : [me.getContext().getProject().ObjectID]},
+				// Project : me.getContext().getProject().ObjectID,
+				// __At : "current",
+				_ValidFrom : { "$lte" : iteration.raw.EndDate},
+				_ValidTo : { "$gte" : iteration.raw.EndDate},
+				Children : null
+			}
+
+			// if scope down then use _ProjectHierarchy else scope to just the current project
+			if (me.getContext().getProjectScopeDown()===true) {
+				find["_ProjectHierarchy"] = { "$in" : [me.getContext().getProject().ObjectID]}
+			} else {
+				find["Project"] = me.getContext().getProject().ObjectID
+			}
+
 			me._loadASnapShotStoreWithAPromise(
-				{
-					_TypeHierarchy : { "$in" : ["HierarchicalRequirement"] },
-					// _ProjectHierarchy : { "$in" : [me.getContext().getProject().ObjectID]},
-					Project : me.getContext().getProject().ObjectID,
-					// __At : "current",
-					_ValidFrom : { "$lte" : iteration.raw.EndDate},
-					_ValidTo : { "$gte" : iteration.raw.EndDate},
-					Children : null
-				}, 
+				find, 
 				["ObjectID","FormattedID","PlanEstimate","ScheduleState"].concat( me.useMVP===true ? me.mvpField : "" ), 
 				["ScheduleState"],
 				null
@@ -317,7 +328,7 @@ Ext.define('CustomApp', {
             usemvp  : false,
             mvpfield : "",
             mvpvalue : "",
-            maxMonths : 6
+            maxMonths : 1
 
         }
     },
