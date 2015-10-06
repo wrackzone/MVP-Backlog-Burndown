@@ -118,9 +118,9 @@ Ext.define('CustomApp', {
 					chartData: {
 						series : series,
 						categories : categories,
-						chartColors : me.useMVP === true ? ['#0000FF', '#87CEEB', '#008000'] : ['#87CEEB', '#008000']
+						chartColors : me.useMVP === true ? ['#0000FF', '#87CEEB', '#008800'] : ['#87CEEB', '#008800']
 					},
-					chartColors : me.useMVP === true ? ['#0000FF', '#87CEEB', '#008000'] : ['#87CEEB', '#008000']
+					chartColors : me.useMVP === true ? ['#0000FF', '#87CEEB', '#008800'] : ['#87CEEB', '#008800']
 				});
 				me.add(me.chart);
 
